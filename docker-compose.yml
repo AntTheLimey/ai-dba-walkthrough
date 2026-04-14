@@ -112,11 +112,12 @@ services:
             - wt-pg-demo-data:/var/lib/pgsql/18/data
             - ./seed/demo-schema.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
         healthcheck:
-            test: ["CMD-SHELL", "pg_isready -U postgres -d ecommerce"]
+            # Verify seed data is loaded, not just pg_isready
+            test: ["CMD-SHELL", "psql -U postgres -d ecommerce -tAc 'SELECT 1 FROM orders LIMIT 1;' | grep -q 1"]
             interval: 5s
             timeout: 5s
-            retries: 15
-            start_period: 30s
+            retries: 30
+            start_period: 10s
         ports:
             - "${WT_DEMO_PORT:-5433}:5432"
 
