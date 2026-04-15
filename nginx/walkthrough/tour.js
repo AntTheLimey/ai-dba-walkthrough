@@ -43,6 +43,55 @@
     // Utility helpers
     // -----------------------------------------------------------------------
 
+    /**
+     * Scroll an element into view within the StatusPanel.
+     * The StatusPanel uses overflow:auto, so window.scrollIntoView
+     * doesn't work — Driver.js positions highlights relative to
+     * the viewport but the element scrolls inside the panel.
+     * This finds the scroll container and sets scrollTop directly.
+     */
+    function scrollPanelTo(el) {
+        if (!el) { return; }
+        // Walk up from the element to find the overflow:auto container
+        var container = el.parentElement;
+        while (container) {
+            var style = getComputedStyle(container);
+            if (style.overflow === "auto" || style.overflowY === "auto" ||
+                style.overflow === "scroll" || style.overflowY === "scroll") {
+                // Found the scroll container — scroll so the element
+                // is near the top of the visible area
+                var elRect = el.getBoundingClientRect();
+                var containerRect = container.getBoundingClientRect();
+                var offset = elRect.top - containerRect.top + container.scrollTop;
+                container.scrollTop = offset - 20;
+                return;
+            }
+            container = container.parentElement;
+        }
+        // Fallback: no scroll container found, try regular scroll
+        scrollPanelTo(el);
+    }
+
+    /**
+     * Tag dynamic elements with data attributes so Driver.js
+     * can target them. Called once after the dashboard loads.
+     */
+    function tagDynamicElements() {
+        // Tag the Event Timeline container
+        var ps = document.querySelectorAll("p");
+        for (var i = 0; i < ps.length; i++) {
+            if (ps[i].textContent === "Event Timeline") {
+                // The timeline's outermost Box is 2 levels up:
+                // p -> header row div -> outer container Box
+                var container = ps[i].parentElement;
+                if (container && container.parentElement) {
+                    container.parentElement.setAttribute("data-wt", "event-timeline");
+                }
+                break;
+            }
+        }
+    }
+
     /** Wait for a selector to appear in the DOM (returns a Promise). */
     function waitForElement(selector, timeout) {
         timeout = timeout || 8000;
@@ -553,6 +602,9 @@
                 // server rows before clicking
                 setTimeout(function () {
                     clickFirstServer();
+                    // Re-tag dynamic elements after the server
+                    // dashboard renders (Event Timeline appears)
+                    setTimeout(tagDynamicElements, 1000);
                 }, 400);
             },
         },
@@ -583,33 +635,25 @@
 
         // Step 4 — Event Timeline bar
         //
-        // The EventTimeline has no aria-label. Use a centered popover
-        // and scroll the timeline into view for context.
+        // The EventTimeline has no aria-label. Tagged with
+        // data-wt="event-timeline" by tagDynamicElements().
         {
+            element: '[data-wt="event-timeline"]',
             popover: {
                 title: "Event Timeline",
                 description:
-                    "The event timeline bar at the top shows every alert " +
-                    "and event as it happens — color-coded by severity. " +
-                    "Hover over events to see details, or click to " +
-                    "investigate.<br><br>" +
+                    "The event timeline shows every alert and event as " +
+                    "it happens — color-coded by severity. Hover over " +
+                    "events to see details, or click to investigate.<br><br>" +
                     "This is your first stop when something goes wrong: " +
                     "the timeline tells you <em>what</em> happened, " +
                     "<em>when</em>, and <em>where</em>.",
-                side: "over",
-                align: "center",
+                side: "bottom",
+                align: "start",
             },
             onHighlightStarted: function () {
-                // Scroll the Event Timeline into view
-                var headings = document.querySelectorAll("p");
-                for (var i = 0; i < headings.length; i++) {
-                    if (headings[i].textContent === "Event Timeline") {
-                        headings[i].scrollIntoView({
-                            behavior: "instant", block: "center"
-                        });
-                        break;
-                    }
-                }
+                var el = document.querySelector('[data-wt="event-timeline"]');
+                scrollPanelTo(el);
             },
         },
 
@@ -631,7 +675,7 @@
             onHighlightStarted: function () {
                 var el = document.querySelector('[aria-label="Collapse Monitoring section"]');
                 if (el) {
-                    el.scrollIntoView({ behavior: "instant", block: "start" });
+                    scrollPanelTo(el);
                 }
             },
         },
@@ -656,7 +700,7 @@
             onHighlightStarted: function () {
                 var el = document.querySelector('[aria-label="Collapse System Resources section"]');
                 if (el) {
-                    el.scrollIntoView({ behavior: "instant", block: "start" });
+                    scrollPanelTo(el);
                 }
             },
         },
@@ -679,7 +723,7 @@
             onHighlightStarted: function () {
                 var el = document.querySelector('[aria-label="Collapse Top Queries section"]');
                 if (el) {
-                    el.scrollIntoView({ behavior: "instant", block: "start" });
+                    scrollPanelTo(el);
                 }
             },
         },
@@ -703,7 +747,7 @@
             onHighlightStarted: function () {
                 var el = document.querySelector('[aria-label="Collapse Database Summaries section"]');
                 if (el) {
-                    el.scrollIntoView({ behavior: "instant", block: "start" });
+                    scrollPanelTo(el);
                 }
             },
         },
@@ -751,7 +795,7 @@
             onHighlightStarted: function () {
                 var el = document.querySelector('[aria-label="Run full analysis"]');
                 if (el) {
-                    el.scrollIntoView({ behavior: "instant", block: "center" });
+                    scrollPanelTo(el);
                 }
             },
         },
@@ -1165,6 +1209,7 @@
         waitForDashboard()
             .then(function () {
                 detectAiFromDom();
+                tagDynamicElements();
                 startTourAtStep(0);
             })
             .catch(function (err) {
