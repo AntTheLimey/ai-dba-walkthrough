@@ -605,7 +605,7 @@
                 for (var i = 0; i < headings.length; i++) {
                     if (headings[i].textContent === "Event Timeline") {
                         headings[i].scrollIntoView({
-                            behavior: "smooth", block: "center"
+                            behavior: "instant", block: "center"
                         });
                         break;
                     }
@@ -631,7 +631,7 @@
             onHighlightStarted: function () {
                 var el = document.querySelector('[aria-label="Collapse Monitoring section"]');
                 if (el) {
-                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                    el.scrollIntoView({ behavior: "instant", block: "start" });
                 }
             },
         },
@@ -656,7 +656,7 @@
             onHighlightStarted: function () {
                 var el = document.querySelector('[aria-label="Collapse System Resources section"]');
                 if (el) {
-                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                    el.scrollIntoView({ behavior: "instant", block: "start" });
                 }
             },
         },
@@ -679,7 +679,7 @@
             onHighlightStarted: function () {
                 var el = document.querySelector('[aria-label="Collapse Top Queries section"]');
                 if (el) {
-                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                    el.scrollIntoView({ behavior: "instant", block: "start" });
                 }
             },
         },
@@ -703,7 +703,7 @@
             onHighlightStarted: function () {
                 var el = document.querySelector('[aria-label="Collapse Database Summaries section"]');
                 if (el) {
-                    el.scrollIntoView({ behavior: "smooth", block: "start" });
+                    el.scrollIntoView({ behavior: "instant", block: "start" });
                 }
             },
         },
@@ -751,7 +751,7 @@
             onHighlightStarted: function () {
                 var el = document.querySelector('[aria-label="Run full analysis"]');
                 if (el) {
-                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    el.scrollIntoView({ behavior: "instant", block: "center" });
                 }
             },
         },
