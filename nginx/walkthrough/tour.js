@@ -14,7 +14,7 @@
  * Loaded by loader.js after the Driver.js library is available.
  *
  * Architecture:
- *   24 steps across 6 parts, plus helper functions for minimize,
+ *   32 steps across 7 parts, plus helper functions for minimize,
  *   resume, skip-to-end, and Make It Yours overlay.
  *
  * DOM Selector Strategy:
@@ -77,17 +77,35 @@
      * can target them. Called once after the dashboard loads.
      */
     function tagDynamicElements() {
-        // Tag the Event Timeline container
         var ps = document.querySelectorAll("p");
         for (var i = 0; i < ps.length; i++) {
-            if (ps[i].textContent === "Event Timeline") {
-                // The timeline's outermost Box is 2 levels up:
-                // p -> header row div -> outer container Box
+            var text = ps[i].textContent;
+
+            // Tag the Event Timeline container
+            // p -> header row div -> outer container Box
+            if (text === "Event Timeline") {
                 var container = ps[i].parentElement;
                 if (container && container.parentElement) {
                     container.parentElement.setAttribute("data-wt", "event-timeline");
                 }
-                break;
+            }
+
+            // Tag the Active Alerts section
+            // p -> header div -> outer container
+            if (text === "Active Alerts") {
+                var alertContainer = ps[i].parentElement;
+                if (alertContainer && alertContainer.parentElement) {
+                    alertContainer.parentElement.setAttribute("data-wt", "active-alerts");
+                }
+            }
+
+            // Tag the server info section (HOST label)
+            // p -> info row -> info bar -> outer container
+            if (text === "HOST") {
+                var infoRow = ps[i].parentElement;
+                if (infoRow && infoRow.parentElement && infoRow.parentElement.parentElement) {
+                    infoRow.parentElement.parentElement.setAttribute("data-wt", "server-info");
+                }
             }
         }
     }
@@ -317,6 +335,9 @@
                 var html =
                     "This guided tour walks you through every major feature " +
                     "in about 15 minutes.<br><br>" +
+                    "A database with known problems and several hours of " +
+                    "pre-seeded runtime metrics are included for " +
+                    "illustrative purposes.<br><br>" +
                     "The workbench has three areas: a <strong>navigator</strong> " +
                     "on the left lists your database servers, the <strong>main " +
                     "panel</strong> in the center shows status and metrics, and " +
@@ -509,7 +530,7 @@
     }
 
     // -----------------------------------------------------------------------
-    // Step definitions — 24 steps across 6 parts
+    // Step definitions — 32 steps across 7 parts
     //
     // Selector notes (from reading the React source):
     //   - ClusterNavigator: Box with bgcolor=background.paper,
@@ -526,11 +547,43 @@
     //     or "Expand X section"
     //   - AIOverview: Paper containing SparkleIcon (AutoAwesome)
     //     with the label "AI Overview"
-    //   - EventTimeline: collapsed section with "Timeline" header
+    //   - EventTimeline: tagged via data-wt="event-timeline"
+    //   - ActiveAlerts: tagged via data-wt="active-alerts"
+    //   - ServerInfo: tagged via data-wt="server-info"
     //   - SelectionHeader: first Box child inside PANEL_ROOT_SX
     //   - server-item-row: className on each ServerItem Box
     //   - cluster-header: className on each ClusterItem header Box
     // -----------------------------------------------------------------------
+
+    /**
+     * Returns true if the given step index is an admin-panel step
+     * (any step that opens or expects the admin dialog to be open).
+     * Steps 21-24 are configuration admin steps, 28-30 are access
+     * control admin steps. Steps 25-27 (server settings, blackout)
+     * are NOT admin steps.
+     */
+    function isAdminStep(idx) {
+        return (idx >= 21 && idx <= 24) || (idx >= 28 && idx <= 30);
+    }
+
+    /**
+     * Find the StatusPanel scroll container (the overflow:auto element)
+     * and reset its scroll position to the top.
+     */
+    function scrollPanelToTop() {
+        // The StatusPanel is the overflow:auto sibling of the navigator.
+        // Walk from a known panel child or search for the container.
+        var panels = document.querySelectorAll("div");
+        for (var i = 0; i < panels.length; i++) {
+            var style = getComputedStyle(panels[i]);
+            if ((style.overflow === "auto" || style.overflowY === "auto") &&
+                panels[i].scrollHeight > panels[i].clientHeight &&
+                panels[i].clientHeight > 200) {
+                panels[i].scrollTop = 0;
+                return;
+            }
+        }
+    }
 
     var steps = [
 
@@ -610,7 +663,7 @@
         },
 
         // -------------------------------------------------------------------
-        // Part 2: Diagnosing a Problem (steps 3-9)
+        // Part 2: Server Dashboard (steps 3-16)
         // -------------------------------------------------------------------
 
         // Step 3 — AI Overview
@@ -631,9 +684,76 @@
                 side: "bottom",
                 align: "start",
             },
+            onHighlightStarted: function () {
+                var el = document.querySelector(
+                    '.MuiPaper-root:has([aria-label="Collapse AI Overview"], [aria-label="Expand AI Overview"])'
+                );
+                scrollPanelTo(el);
+            },
         },
 
-        // Step 4 — Event Timeline bar
+        // Step 4 — Full Server Analysis button
+        //
+        // The "Run full analysis" button (PsychologyIcon) appears in
+        // the AIOverview header row, next to the "AI Overview" label.
+        {
+            element: '[aria-label="Run full analysis"]',
+            popover: {
+                title: "Full Server Analysis",
+                description: aiDesc(
+                    "Click this button to request a comprehensive AI " +
+                    "analysis of the entire server. The analysis examines " +
+                    "metrics, alerts, configuration, and performance to " +
+                    "provide actionable recommendations."
+                ),
+                side: "left",
+                align: "start",
+            },
+            onHighlightStarted: function () {
+                var el = document.querySelector('[aria-label="Run full analysis"]');
+                scrollPanelTo(el);
+            },
+        },
+
+        // Step 5 — Server Information (centered popover)
+        //
+        // The server info bar shows connection details. No single
+        // stable element to highlight, so use a centered popover.
+        {
+            popover: {
+                title: "Server Information",
+                description:
+                    "The server information bar shows connection details: " +
+                    "host, port, database, user, and the server's role in " +
+                    "its cluster.",
+                side: "over",
+                align: "center",
+            },
+            onHighlightStarted: function () {
+                scrollPanelToTop();
+            },
+        },
+
+        // Step 6 — Server Details (i) button
+        {
+            element: '[aria-label="Server details"]',
+            popover: {
+                title: "Server Details",
+                description:
+                    "Click this icon for detailed server information " +
+                    "including PostgreSQL version, operating system, " +
+                    "extensions, data directory, and configuration " +
+                    "parameters.",
+                side: "left",
+                align: "start",
+            },
+            onHighlightStarted: function () {
+                var el = document.querySelector('[aria-label="Server details"]');
+                scrollPanelTo(el);
+            },
+        },
+
+        // Step 7 — Event Timeline bar
         //
         // The EventTimeline has no aria-label. Tagged with
         // data-wt="event-timeline" by tagDynamicElements().
@@ -643,11 +763,9 @@
                 title: "Event Timeline",
                 description:
                     "The event timeline shows every alert and event as " +
-                    "it happens — color-coded by severity. Hover over " +
-                    "events to see details, or click to investigate.<br><br>" +
-                    "This is your first stop when something goes wrong: " +
-                    "the timeline tells you <em>what</em> happened, " +
-                    "<em>when</em>, and <em>where</em>.",
+                    "it happens \u2014 color-coded by severity. Hover " +
+                    "over events to see details, or click to investigate. " +
+                    "This is your first stop when something goes wrong.",
                 side: "bottom",
                 align: "start",
             },
@@ -657,7 +775,50 @@
             },
         },
 
-        // Step 5 — Monitoring Dashboard
+        // Step 8 — Active Alerts
+        //
+        // Tagged with data-wt="active-alerts" by tagDynamicElements().
+        {
+            element: '[data-wt="active-alerts"]',
+            popover: {
+                title: "Active Alerts",
+                description:
+                    "Active alerts show every threshold breach and anomaly " +
+                    "detected on this server. Each alert displays severity, " +
+                    "the metric value that triggered it, and when it fired. " +
+                    "Click any alert to investigate.",
+                side: "bottom",
+                align: "start",
+            },
+            onHighlightStarted: function () {
+                var el = document.querySelector('[data-wt="active-alerts"]');
+                scrollPanelTo(el);
+            },
+        },
+
+        // Step 9 — Analyze with AI button (first one)
+        //
+        // Multiple "Analyze with AI" buttons exist (one per alert).
+        // Target the first one.
+        {
+            element: '[aria-label="Analyze with AI"]',
+            popover: {
+                title: "AI Alert Analysis",
+                description: aiDesc(
+                    "Click this button on any alert to get an AI-powered " +
+                    "analysis that explains the root cause and suggests " +
+                    "specific remediation steps."
+                ),
+                side: "left",
+                align: "start",
+            },
+            onHighlightStarted: function () {
+                var el = document.querySelector('[aria-label="Analyze with AI"]');
+                scrollPanelTo(el);
+            },
+        },
+
+        // Step 10 — Monitoring Dashboard
         //
         // The CollapsibleSection wrapping all metric charts.
         {
@@ -665,26 +826,24 @@
             popover: {
                 title: "Monitoring Dashboard",
                 description:
-                    "Below the timeline, the monitoring section shows " +
-                    "detailed metric charts: system resources, " +
-                    "PostgreSQL performance, WAL replication status, " +
-                    "database summaries, and top queries.",
+                    "The monitoring section contains detailed metric " +
+                    "charts organized by category. Scroll down to explore " +
+                    "system resources, PostgreSQL performance, replication, " +
+                    "database summaries, and query analysis.",
                 side: "bottom",
                 align: "start",
             },
             onHighlightStarted: function () {
-                var el = document.querySelector('[aria-label="Collapse Monitoring section"]');
-                if (el) {
-                    scrollPanelTo(el);
-                }
+                var el = document.querySelector(
+                    '[aria-label="Collapse Monitoring section"]'
+                ) || document.querySelector(
+                    '[aria-label="Expand Monitoring section"]'
+                );
+                scrollPanelTo(el);
             },
         },
 
-        // Step 5 — System Resources section
-        //
-        // Inside the Monitoring CollapsibleSection, the ServerDashboard
-        // renders SystemResourcesSection as a CollapsibleSection with
-        // title "System Resources".
+        // Step 11 — System Resources section
         {
             element: '[aria-label="Collapse System Resources section"], [aria-label="Expand System Resources section"]',
             popover: {
@@ -698,113 +857,128 @@
                 align: "start",
             },
             onHighlightStarted: function () {
-                var el = document.querySelector('[aria-label="Collapse System Resources section"]');
-                if (el) {
-                    scrollPanelTo(el);
-                }
+                var el = document.querySelector(
+                    '[aria-label="Collapse System Resources section"]'
+                ) || document.querySelector(
+                    '[aria-label="Expand System Resources section"]'
+                );
+                scrollPanelTo(el);
             },
         },
 
-        // Step 6 — Top Queries
-        //
-        // CollapsibleSection with title "Top Queries" inside
-        // ServerDashboard > TopQueriesSection.
+        // Step 12 — PostgreSQL Overview section
+        {
+            element: '[aria-label="Collapse PostgreSQL Overview section"], [aria-label="Expand PostgreSQL Overview section"]',
+            popover: {
+                title: "PostgreSQL Overview",
+                description:
+                    "The PostgreSQL overview shows database-level " +
+                    "performance: cache hit ratio, transaction rates " +
+                    "(commits vs rollbacks), active connections, and " +
+                    "checkpoint activity.",
+                side: "bottom",
+                align: "start",
+            },
+            onHighlightStarted: function () {
+                var el = document.querySelector(
+                    '[aria-label="Collapse PostgreSQL Overview section"]'
+                ) || document.querySelector(
+                    '[aria-label="Expand PostgreSQL Overview section"]'
+                );
+                scrollPanelTo(el);
+            },
+        },
+
+        // Step 13 — WAL and Replication section
+        {
+            element: '[aria-label="Collapse WAL and Replication section"], [aria-label="Expand WAL and Replication section"]',
+            popover: {
+                title: "WAL and Replication",
+                description:
+                    "Write-Ahead Log (WAL) metrics show write throughput " +
+                    "and sync times. For replicated servers, this section " +
+                    "also displays replication lag, slot status, and " +
+                    "subscription health.",
+                side: "bottom",
+                align: "start",
+            },
+            onHighlightStarted: function () {
+                var el = document.querySelector(
+                    '[aria-label="Collapse WAL and Replication section"]'
+                ) || document.querySelector(
+                    '[aria-label="Expand WAL and Replication section"]'
+                );
+                scrollPanelTo(el);
+            },
+        },
+
+        // Step 14 — Database Summaries section
+        {
+            element: '[aria-label="Collapse Database Summaries section"], [aria-label="Expand Database Summaries section"]',
+            popover: {
+                title: "Database Summaries",
+                description:
+                    "Each database on this server gets a summary card " +
+                    "showing size, connection count, transaction rate, " +
+                    "and cache performance. Click a database to drill " +
+                    "down into table and index details.",
+                side: "bottom",
+                align: "start",
+            },
+            onHighlightStarted: function () {
+                var el = document.querySelector(
+                    '[aria-label="Collapse Database Summaries section"]'
+                ) || document.querySelector(
+                    '[aria-label="Expand Database Summaries section"]'
+                );
+                scrollPanelTo(el);
+            },
+        },
+
+        // Step 15 — Top Queries section
         {
             element: '[aria-label="Collapse Top Queries section"], [aria-label="Expand Top Queries section"]',
             popover: {
                 title: "Top Queries",
                 description:
-                    "The top queries section shows the most resource-intensive " +
-                    "queries on this server, ranked by total execution time. " +
-                    "Click any query to see its full text and execution plan.",
+                    "The slowest queries ranked by total execution time " +
+                    "from pg_stat_statements. Click any query to see its " +
+                    "full text, execution statistics, and plan analysis.",
                 side: "bottom",
                 align: "start",
             },
             onHighlightStarted: function () {
-                var el = document.querySelector('[aria-label="Collapse Top Queries section"]');
-                if (el) {
-                    scrollPanelTo(el);
-                }
+                var el = document.querySelector(
+                    '[aria-label="Collapse Top Queries section"]'
+                ) || document.querySelector(
+                    '[aria-label="Expand Top Queries section"]'
+                );
+                scrollPanelTo(el);
             },
         },
 
-        // Step 7 — Database Summaries section
+        // Step 16 — Query Details (centered popover)
         //
-        // CollapsibleSection with title "Database Summaries" inside
-        // ServerDashboard > DatabaseSummariesSection.
+        // Encourage the user to click a query row. No programmatic
+        // click — just describe what they will see.
         {
-            element: '[aria-label="Collapse Database Summaries section"], [aria-label="Expand Database Summaries section"]',
             popover: {
-                title: "Database Drill-Down",
+                title: "Query Details",
                 description:
-                    "The Database Summaries section shows each database on " +
-                    "this server with key metrics. Click a database card to " +
-                    "drill down into table sizes, index usage, cache hit " +
-                    "ratios, and more.",
-                side: "bottom",
-                align: "start",
-            },
-            onHighlightStarted: function () {
-                var el = document.querySelector('[aria-label="Collapse Database Summaries section"]');
-                if (el) {
-                    scrollPanelTo(el);
-                }
-            },
-        },
-
-        // Step 8 — Alerts Section
-        //
-        // The AlertsSection renders inside the StatusPanel without a
-        // unique aria-label. Use a centered popover to describe alerts.
-        {
-            popover: {
-                title: "Alert Details",
-                description: aiDesc(
-                    "The Active Alerts section (above the monitoring " +
-                    "charts) lists every alert for the selected server. " +
-                    "Each alert shows severity, threshold values, and " +
-                    "timing. Click the brain icon on any alert to request " +
-                    "an AI analysis that explains the root cause and " +
-                    "suggests remediation steps."
-                ),
+                    "Click on any query row above to see the full query " +
+                    "text, execution plan, and detailed statistics. This " +
+                    "helps identify optimization opportunities like missing " +
+                    "indexes or inefficient joins.",
                 side: "over",
                 align: "center",
             },
-            onHighlightStarted: function () {
-                window.scrollTo({ top: 0, behavior: "smooth" });
-            },
-        },
-
-        // Step 9 — Full Server Analysis button
-        //
-        // The "Run full analysis" button (PsychologyIcon) appears in
-        // the AIOverview header row, next to the "AI Overview" label.
-        {
-            element: '[aria-label="Run full analysis"]',
-            popover: {
-                title: "Full Server Analysis",
-                description: aiDesc(
-                    "The brain icon next to the AI Overview triggers a " +
-                    "comprehensive server analysis. The AI examines metrics, " +
-                    "active alerts, query patterns, and replication status " +
-                    "to produce a detailed health report."
-                ),
-                side: "bottom",
-                align: "start",
-            },
-            onHighlightStarted: function () {
-                var el = document.querySelector('[aria-label="Run full analysis"]');
-                if (el) {
-                    scrollPanelTo(el);
-                }
-            },
         },
 
         // -------------------------------------------------------------------
-        // Part 3: Ask Ellie (steps 10-13)
+        // Part 3: Ask Ellie (steps 17-20)
         // -------------------------------------------------------------------
 
-        // Step 10 — Chat toggle button (FAB)
+        // Step 17 — Chat toggle button (FAB)
         //
         // The ChatFAB renders a Fab with aria-label="open chat" at
         // position:fixed bottom:24px right:24px. It is only rendered
@@ -827,7 +1001,7 @@
             },
         },
 
-        // Step 11 — Chat panel open
+        // Step 18 — Chat panel open
         //
         // The ChatPanel is a Box with role="complementary" and
         // aria-label="AI Chat Panel". Open the panel and highlight it.
@@ -849,7 +1023,7 @@
             },
         },
 
-        // Step 12 — Run in Database button (in chat)
+        // Step 19 — Run in Database button (in chat)
         //
         // Highlight the chat panel again with a different description.
         {
@@ -866,7 +1040,7 @@
             },
         },
 
-        // Step 13 — Chat input field
+        // Step 20 — Chat input field
         //
         // The ChatInput renders a TextField with
         // aria-label="Chat message input".
@@ -888,10 +1062,10 @@
         },
 
         // -------------------------------------------------------------------
-        // Part 4: How It's Configured (steps 14-19)
+        // Part 4: How It's Configured (steps 21-25)
         // -------------------------------------------------------------------
 
-        // Step 14 — Admin panel: Probe Defaults
+        // Step 21 — Admin panel: Probe Defaults
         //
         // The AdminPanel is a fullScreen Dialog. Open it and navigate
         // to the Probe Defaults page.
@@ -908,14 +1082,17 @@
             },
             onHighlightStarted: function () {
                 closeChatPanel();
-                openAdminPanel();
+                closeAnyDialog();
                 setTimeout(function () {
-                    clickAdminNavItem("Probe Defaults");
-                }, 400);
+                    openAdminPanel();
+                    setTimeout(function () {
+                        clickAdminNavItem("Probe Defaults");
+                    }, 400);
+                }, 300);
             },
         },
 
-        // Step 15 — Admin panel: Alert Defaults
+        // Step 22 — Admin panel: Alert Defaults
         {
             element: ".MuiDialog-root",
             popover: {
@@ -929,11 +1106,14 @@
                 align: "start",
             },
             onHighlightStarted: function () {
-                clickAdminNavItem("Alert Defaults");
+                openAdminPanel();
+                setTimeout(function () {
+                    clickAdminNavItem("Alert Defaults");
+                }, 400);
             },
         },
 
-        // Step 16 — Admin panel: Email Channels
+        // Step 23 — Admin panel: Email Channels
         {
             element: ".MuiDialog-root",
             popover: {
@@ -947,31 +1127,14 @@
                 align: "start",
             },
             onHighlightStarted: function () {
-                clickAdminNavItem("Email Channels");
+                openAdminPanel();
+                setTimeout(function () {
+                    clickAdminNavItem("Email Channels");
+                }, 400);
             },
         },
 
-        // Step 17 — Close admin, explain Alert Overrides
-        //
-        // This is a centered popover (no element) that explains
-        // alert overrides on the main panel.
-        {
-            popover: {
-                title: "Alert Overrides",
-                description:
-                    "Back on the main panel, individual servers can have " +
-                    "alert overrides. These let you raise, lower, or disable " +
-                    "thresholds for a specific connection without changing " +
-                    "the global defaults.",
-                side: "over",
-                align: "center",
-            },
-            onHighlightStarted: function () {
-                closeAdminPanel();
-            },
-        },
-
-        // Step 18 — Admin panel: Slack Channels
+        // Step 24 — Admin panel: Slack Channels
         {
             element: ".MuiDialog-root",
             popover: {
@@ -991,38 +1154,82 @@
             },
         },
 
-        // Step 19 — Blackout Windows
+        // Step 25 — Server Settings (centered popover)
         //
-        // The BlackoutManagementDialog is a standard MUI Dialog opened
-        // from the SelectionHeader's blackout icon button.
+        // Server settings are accessed by hovering over the server row
+        // to reveal a gear icon. No stable selector for the hover-
+        // revealed icon, so use a centered popover.
+        {
+            popover: {
+                title: "Server Settings",
+                description:
+                    "Each server in the navigator has a settings menu. " +
+                    "Hover over the server name to reveal the settings " +
+                    "icon, which opens server-specific configuration for " +
+                    "alert overrides, probe intervals, and notification " +
+                    "channels.",
+                side: "over",
+                align: "center",
+            },
+            onHighlightStarted: function () {
+                closeAdminPanel();
+            },
+        },
+
+        // -------------------------------------------------------------------
+        // Part 5: Blackout Windows (steps 26-27)
+        // -------------------------------------------------------------------
+
+        // Step 26 — Blackout Windows dialog
+        //
+        // Open the blackout management dialog from the status panel
+        // header, then highlight the dialog.
         {
             element: ".MuiDialog-root",
             popover: {
                 title: "Blackout Windows",
                 description:
-                    "Sometimes you need to silence alerts during planned " +
-                    "maintenance. Blackout windows suppress notifications " +
-                    "at the estate, group, cluster, or server level for a " +
-                    "specified period.",
+                    "Schedule maintenance windows during which alerts are " +
+                    "suppressed. Create one-time blackouts for immediate " +
+                    "use, or recurring schedules using cron expressions.",
                 side: "left",
-                align: "start",
+                align: "center",
             },
             onHighlightStarted: function () {
-                closeAdminPanel();
-                // Wait for the fullScreen admin Dialog slide-out
-                // animation to complete before opening the blackout
-                // management dialog.
+                closeAnyDialog();
                 setTimeout(function () {
-                    openBlackoutDialog();
-                }, 700);
+                    var btn = document.querySelector(
+                        '[aria-label="Blackout management"]'
+                    );
+                    if (btn) { btn.click(); }
+                }, 500);
+            },
+        },
+
+        // Step 27 — New Scheduled Blackout (centered popover)
+        //
+        // Inside the blackout modal, describe the scheduling feature.
+        {
+            popover: {
+                title: "Create Blackout Schedule",
+                description:
+                    "Define recurring maintenance windows with cron " +
+                    "expressions. Blackouts can be scoped to specific " +
+                    "servers, clusters, or the entire estate. Alerts are " +
+                    "automatically suppressed during active blackouts.",
+                side: "over",
+                align: "center",
+            },
+            onDeselected: function () {
+                closeAnyDialog();
             },
         },
 
         // -------------------------------------------------------------------
-        // Part 5: Who Can Access What (steps 20-22)
+        // Part 6: Who Can Access What (steps 28-30)
         // -------------------------------------------------------------------
 
-        // Step 20 — Admin: Users
+        // Step 28 — Admin: Users
         {
             element: ".MuiDialog-root",
             popover: {
@@ -1035,7 +1242,6 @@
                 align: "start",
             },
             onHighlightStarted: function () {
-                // Close any open dialogs (blackout dialog from step 19)
                 closeAnyDialog();
                 setTimeout(function () {
                     openAdminPanel();
@@ -1046,7 +1252,7 @@
             },
         },
 
-        // Step 21 — Admin: Tokens
+        // Step 29 — Admin: Tokens
         {
             element: ".MuiDialog-root",
             popover: {
@@ -1060,11 +1266,14 @@
                 align: "start",
             },
             onHighlightStarted: function () {
-                clickAdminNavItem("Tokens");
+                openAdminPanel();
+                setTimeout(function () {
+                    clickAdminNavItem("Tokens");
+                }, 400);
             },
         },
 
-        // Step 22 — Admin: AI Memories
+        // Step 30 — Admin: AI Memories
         {
             element: ".MuiDialog-root",
             popover: {
@@ -1079,15 +1288,18 @@
                 align: "start",
             },
             onHighlightStarted: function () {
-                clickAdminNavItem("Memories");
+                openAdminPanel();
+                setTimeout(function () {
+                    clickAdminNavItem("Memories");
+                }, 400);
             },
         },
 
         // -------------------------------------------------------------------
-        // Part 6: Wrap Up (step 23)
+        // Part 7: Wrap Up (step 31)
         // -------------------------------------------------------------------
 
-        // Step 23 — Tour complete (centered popover)
+        // Step 31 — Tour complete (centered popover)
         //
         // Close the admin panel and present a summary before showing
         // the Make It Yours overlay.
@@ -1166,6 +1378,19 @@
                 }
             },
             onPrevClick: function () {
+                // Close dialogs when navigating backward from a step
+                // that has a dialog open to one that does not. This
+                // covers both admin-panel steps and blackout steps.
+                var prevStep = currentStep - 1;
+                if (prevStep >= 0) {
+                    var curIsDialog = isAdminStep(currentStep) ||
+                        currentStep === 26;
+                    var prevIsDialog = isAdminStep(prevStep) ||
+                        prevStep === 26;
+                    if (curIsDialog && !prevIsDialog) {
+                        closeAnyDialog();
+                    }
+                }
                 if (driverInstance) {
                     driverInstance.movePrevious();
                 }
